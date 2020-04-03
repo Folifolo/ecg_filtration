@@ -1,9 +1,7 @@
-import glob
 import pickle as pkl
-import random
 from math import sqrt
 from random import randint
-import scipy.io as sio
+
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import interpolate
@@ -120,34 +118,31 @@ def _generate_segment_artefact(ecg, type=0, noise_type='ma'):
         return noise_fragment
 
 
-def artefact_for_detection_holter(ecg, size, batch_size, noise_prob, noise_type='ma'):
+def artefact_for_detection_holter(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
+    if noise_prob is None:
+        noise_prob = [0.3, 0.1, 0.1, 0.1, 0.1, 0.3]
     while 1:
-        x_batch = np.zeros((batch_size, size, 1))
-        y_batch = np.zeros((batch_size, size, 2))
+        ecg_batch = np.zeros((batch_size, size, 1))
+        mask_batch = np.zeros((batch_size, size, 6))
         for i in range(batch_size):
             start_position = randint(0, ecg.shape[0] - size - 1)
             x_tmp = ecg[start_position:start_position + size]
-            mask_tmp = np.zeros((size, 2))
+            mask_tmp = np.zeros((size, 6))
 
             intervals = np.random.randint(size, size=10)
             intervals = np.append(intervals, [0, size])
             intervals = np.sort(np.unique(intervals))
-            for j in range(intervals.shape[0]-1):
-                type = random.choice([0,5])
-                fragment = _generate_segment_artefact(ecg[intervals[j]:intervals[j+1]], type, noise_type)
-                if type == 0:
-                    mask_tmp[intervals[j]:intervals[j+1], 0] = 1
-                elif type == 5:
-                    mask_tmp[intervals[j]:intervals[j+1], 1] = 1
+            for j in range(intervals.shape[0] - 1):
+                type = np.random.choice(6, p=noise_prob)
+                fragment = _generate_segment_artefact(ecg[intervals[j]:intervals[j + 1]], type, noise_type)
+                mask_tmp[intervals[j]:intervals[j + 1], type] = 1
 
-                x_tmp[intervals[j]:intervals[j+1]] = fragment
+                x_tmp[intervals[j]:intervals[j + 1]] = fragment
 
+            ecg_batch[i, :, 0] = x_tmp
+            mask_batch[i] = mask_tmp
 
-
-            x_batch[i, :, 0] = x_tmp
-            y_batch[i] = mask_tmp
-
-        yield (x_batch, y_batch)
+        yield (ecg_batch, mask_batch)
 
 
 def _add_noise(ecg, noise_type='em', level=1):
@@ -280,5 +275,5 @@ if __name__ == "__main__":
     next(gener)
     xy = load_dataset()
     X = xy["x"]
-    #_generate_segment_artefact(X[0, :, 0], type =5)
-    #_add_noise(X[0, :, 0])
+    # _generate_segment_artefact(X[0, :, 0], type =5)
+    # _add_noise(X[0, :, 0])

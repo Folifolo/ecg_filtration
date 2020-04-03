@@ -11,6 +11,8 @@ DATA_PATH = "C:\\data\\"
 DATA_FILENAME = "data_2033.json"
 DIAG_FILENAME = "diagnosis.json"
 PKL_FILENAME = "data_2033.pkl"
+HOLTER_PATH = "holters\\"
+HOLTER_FILENAME = "holter"
 
 LEADS_NAMES = ['i', 'ii', 'iii', 'avr', 'avl', 'avf', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6']
 FREQUENCY_OF_DATASET = 500
@@ -102,6 +104,11 @@ def load_dataset(folder_path=DATA_PATH):
     with open(folder_path + PKL_FILENAME, 'rb') as infile:
         dataset = pkl.load(infile)
 
+    return dataset
+
+def load_holter(patient = 0, folder_path=HOLTER_PATH):
+    with open(folder_path + HOLTER_FILENAME + str(patient) + ".pkl", 'rb') as infile:
+        dataset = pkl.load(infile)
     return dataset
 
 
