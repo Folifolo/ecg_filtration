@@ -7,8 +7,6 @@ import numpy as np
 from scipy import interpolate
 from scipy.signal import cwt, ricker, periodogram
 
-from dataset import load_dataset
-
 em_path = 'em' + "_500Hz.pkl"
 ma_path = 'ma' + "_500Hz.pkl"
 bw_path = 'bw' + "_500Hz.pkl"
@@ -27,9 +25,9 @@ def _generator_carcass(ecgs, size, batch_size, noise_type='ma', level=1):
     for i in range(batch_size):
         ecg_number = randint(0, ecgs.shape[0] - 1)
         start_position = randint(0, ecgs.shape[1] - size - 1)
-        ecg_sample = ecgs[ecg_number, start_position:start_position + size]
 
-        noised_sample = _add_noise(ecgs, noise_type, level)
+        ecg_sample = ecgs[ecg_number, start_position:start_position + size]
+        noised_sample = _add_noise(ecg_sample, noise_type, level)
 
         x_batch[i] = ecg_sample
         y_batch[i] = noised_sample
@@ -40,10 +38,14 @@ def _generator_carcass(ecgs, size, batch_size, noise_type='ma', level=1):
 def noised_for_filtration(ecgs, size, batch_size, lead=0, noise_type='ma', level=1):
     while 1:
         (x_batch, y_batch) = _generator_carcass(ecgs[:, :, lead], size, batch_size, noise_type, level)
+        # (x_batch, y_batch) = _generator_carcass(ecgs, size, batch_size, noise_type, level)
         x_batch = np.expand_dims(x_batch, 2)
         y_batch = np.expand_dims(y_batch, 2)
+        x_batch = np.expand_dims(x_batch, 3)
+        y_batch = np.expand_dims(y_batch, 3)
 
         yield (x_batch, y_batch)
+        # yield (y_batch, x_batch)
 
 
 def noised_for_detection(ecgs, size, batch_size, lead=0, noise_type='ma', level=1):
@@ -106,14 +108,23 @@ def _generate_segment_artefact(ecg, type=0, noise_type='ma'):
         return _add_noise(ecg, noise_type, type)
     elif type == 5:
         noise_sample, _ = _get_noise_snr(noise_type, 1)
-        noise_start_position = randint(0, noise_sample.shape[0] - len(ecg) - 1)
-        noise_channel = randint(0, 1)
-        noise_fragment = noise_sample[noise_start_position:noise_start_position + len(ecg), noise_channel]
+        noise_power = np.array([0])
+        while np.mean(noise_power) == 0:
+            noise_start_position = randint(0, noise_sample.shape[0] - len(ecg) - 1)
+            noise_channel = randint(0, 1)
+            noise_fragment = noise_sample[noise_start_position:noise_start_position + len(ecg), noise_channel]
+            _, noise_power = periodogram(noise_fragment, 500)
 
-        _, noise_power = periodogram(noise_fragment, 500)
         _, ecg_power = periodogram(ecg, 500)
 
         noise_fragment = noise_fragment * sqrt(np.mean(ecg_power)) / sqrt(np.mean(noise_power))
+
+        noise_fragment = noise_fragment + np.mean(ecg) - np.mean(noise_fragment)
+        size = 30
+        tmp_left = np.arange(0, 1, 1 / size)
+        tmp_right = np.arange(1, 0, -1 / size)
+        noise_fragment[:size] = ecg[:size] * tmp_right + noise_fragment[:size] * tmp_left
+        noise_fragment[-size:] = ecg[-size:] * tmp_left + noise_fragment[-size:] * tmp_right
 
         return noise_fragment
 
@@ -127,14 +138,17 @@ def artefact_for_detection_holter(ecg, size, batch_size, noise_prob=None, noise_
         for i in range(batch_size):
             start_position = randint(0, ecg.shape[0] - size - 1)
             x_tmp = ecg[start_position:start_position + size]
+            while np.mean(x_tmp == 0):
+                start_position = randint(0, ecg.shape[0] - size - 1)
+                x_tmp = ecg[start_position:start_position + size]
+
             mask_tmp = np.zeros((size, 6))
 
-            intervals = np.random.randint(size, size=10)
-            intervals = np.append(intervals, [0, size])
-            intervals = np.sort(np.unique(intervals))
+            intervals = create_mask(size)
+
             for j in range(intervals.shape[0] - 1):
                 type = np.random.choice(6, p=noise_prob)
-                fragment = _generate_segment_artefact(ecg[intervals[j]:intervals[j + 1]], type, noise_type)
+                fragment = _generate_segment_artefact(x_tmp[intervals[j]:intervals[j + 1]], type, noise_type)
                 mask_tmp[intervals[j]:intervals[j + 1], type] = 1
 
                 x_tmp[intervals[j]:intervals[j + 1]] = fragment
@@ -143,6 +157,48 @@ def artefact_for_detection_holter(ecg, size, batch_size, noise_prob=None, noise_
             mask_batch[i] = mask_tmp
 
         yield (ecg_batch, mask_batch)
+
+
+def artefact_for_detection_ecg(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
+    if noise_prob is None:
+        noise_prob = [0.3, 0.1, 0.1, 0.1, 0.1, 0.3]
+    while 1:
+        ecg_batch = np.zeros((batch_size, size, 1))
+        mask_batch = np.zeros((batch_size, size, 6))
+        for i in range(batch_size):
+            ecg_num = randint(0, ecg.shape[0] - 1)
+            start_position = randint(0, ecg.shape[1] - size - 1)
+            ecg_lead = randint(0, ecg.shape[2] - 1)
+            x_tmp = ecg[ecg_num, start_position:start_position + size, ecg_lead]
+
+            mask_tmp = np.zeros((size, 6))
+
+            intervals = create_mask(size)
+
+            for j in range(intervals.shape[0] - 1):
+                type = np.random.choice(6, p=noise_prob)
+                fragment = _generate_segment_artefact(x_tmp[intervals[j]:intervals[j + 1]], type, noise_type)
+                mask_tmp[intervals[j]:intervals[j + 1], type] = 1
+
+                x_tmp[intervals[j]:intervals[j + 1]] = fragment
+
+            ecg_batch[i, :, 0] = x_tmp
+            mask_batch[i] = mask_tmp
+
+        yield (ecg_batch, mask_batch)
+
+
+def create_mask(size, num_sections=10, min_size=300):
+    intervals = np.random.randint(size, size=num_sections)
+    intervals = np.append(intervals, [0, size])
+    intervals = np.sort(intervals)
+    difference = np.diff(intervals)
+    counter = 0
+    for j in range(len(difference)):
+        if difference[j] < min_size:
+            intervals = np.delete(intervals, j + 1 - counter)
+            counter += 1
+    return intervals
 
 
 def _add_noise(ecg, noise_type='em', level=1):
@@ -269,11 +325,12 @@ def resize_noise(noise, name, old_freq=360, new_freq=500):
 
 
 if __name__ == "__main__":
-    with open('holters\\holter0.pkl', 'rb') as infile:
-        dataset = pkl.load(infile)
-    gener = artefact_for_detection_holter(dataset, 15000, 1, 0, noise_type='ma')
-    next(gener)
-    xy = load_dataset()
-    X = xy["x"]
-    # _generate_segment_artefact(X[0, :, 0], type =5)
-    # _add_noise(X[0, :, 0])
+    import scipy.io as sio
+    import glob
+
+    data_files = glob.glob("D:\\data\\holters\\" + "*.mat")
+    for i, data_file in enumerate(data_files):
+        ecg_data = sio.loadmat(data_file)['ecg'].squeeze()
+        data = _resize_signal(ecg_data, old_freq=400, new_freq=500)
+        with open("D:\\data\\holters\\holter" + str(i) + '.pkl', 'wb') as output:
+            pkl.dump(data, output)
