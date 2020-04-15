@@ -129,23 +129,16 @@ def _generate_segment_artefact(ecg, type=0, noise_type='ma'):
         return noise_fragment
 
 
-def artefact_for_detection_holter(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
+def artefact_for_detection(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
     if noise_prob is None:
-        noise_prob = [0.3, 0.1, 0.1, 0.1, 0.1, 0.3]
+        noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
     while 1:
         ecg_batch = np.zeros((batch_size, size, 1))
         mask_batch = np.zeros((batch_size, size, 6))
         for i in range(batch_size):
-            start_position = randint(0, ecg.shape[0] - size - 1)
-            x_tmp = ecg[start_position:start_position + size]
-            while np.mean(x_tmp == 0):
-                start_position = randint(0, ecg.shape[0] - size - 1)
-                x_tmp = ecg[start_position:start_position + size]
-
+            x_tmp = choose_ecg_fragment(ecg, size)
             mask_tmp = np.zeros((size, 6))
-
             intervals = create_mask(size)
-
             for j in range(intervals.shape[0] - 1):
                 type = np.random.choice(6, p=noise_prob)
                 fragment = _generate_segment_artefact(x_tmp[intervals[j]:intervals[j + 1]], type, noise_type)
@@ -159,33 +152,24 @@ def artefact_for_detection_holter(ecg, size, batch_size, noise_prob=None, noise_
         yield (ecg_batch, mask_batch)
 
 
-def artefact_for_detection_ecg(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
-    if noise_prob is None:
-        noise_prob = [0.3, 0.1, 0.1, 0.1, 0.1, 0.3]
-    while 1:
-        ecg_batch = np.zeros((batch_size, size, 1))
-        mask_batch = np.zeros((batch_size, size, 6))
-        for i in range(batch_size):
+def choose_ecg_fragment(ecg, size):
+    if ecg.ndim == 1:
+        start_position = randint(0, ecg.shape[0] - size - 1)
+        x_tmp = ecg[start_position:start_position + size]
+        while np.mean(x_tmp)== 0:
+            start_position = randint(0, ecg.shape[0] - size - 1)
+            x_tmp = ecg[start_position:start_position + size]
+    if ecg.ndim == 3:
+        ecg_num = randint(0, ecg.shape[0] - 1)
+        start_position = randint(0, ecg.shape[1] - size - 1)
+        ecg_lead = randint(0, ecg.shape[2] - 1)
+        x_tmp = ecg[ecg_num, start_position:start_position + size, ecg_lead]
+        while np.mean(x_tmp)== 0:
             ecg_num = randint(0, ecg.shape[0] - 1)
             start_position = randint(0, ecg.shape[1] - size - 1)
             ecg_lead = randint(0, ecg.shape[2] - 1)
             x_tmp = ecg[ecg_num, start_position:start_position + size, ecg_lead]
-
-            mask_tmp = np.zeros((size, 6))
-
-            intervals = create_mask(size)
-
-            for j in range(intervals.shape[0] - 1):
-                type = np.random.choice(6, p=noise_prob)
-                fragment = _generate_segment_artefact(x_tmp[intervals[j]:intervals[j + 1]], type, noise_type)
-                mask_tmp[intervals[j]:intervals[j + 1], type] = 1
-
-                x_tmp[intervals[j]:intervals[j + 1]] = fragment
-
-            ecg_batch[i, :, 0] = x_tmp
-            mask_batch[i] = mask_tmp
-
-        yield (ecg_batch, mask_batch)
+    return x_tmp
 
 
 def create_mask(size, num_sections=10, min_size=300):

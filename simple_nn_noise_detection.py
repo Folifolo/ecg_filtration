@@ -1,10 +1,10 @@
 from keras.layers import *
 from keras.models import Model
 
-from evaluation import train_eval_holter
+from evaluation import load_split, train_eval
 
 
-def build_network(input_shape):
+def build_simple_network(input_shape):
     inputs = Input(input_shape)
     x = Conv1D(64, 20, activation="relu", padding='same')(inputs)
     x = MaxPool1D(2)(x)
@@ -22,10 +22,16 @@ def build_network(input_shape):
     decoded = Conv1D(6, 20, activation='softmax', padding='same')(x)
 
     autoencoder = Model(inputs, decoded)
-    autoencoder.compile(optimizer='adam', loss='mean_squared_error')
+    autoencoder.compile(optimizer='adam', loss='categorical_crossentropy')
     return autoencoder
 
 
 if __name__ == "__main__":
-    model = build_network((None, 1))
-    train_eval_holter(model, should_eval=True, should_load=True, MODEL_SAVE_PATH = "models\\simple_detection_em.h5")
+    MODEL_PATH = "simple_detection_1"
+
+    model = build_simple_network((None, 1))
+    # model = load_model(MODEL_PATH)
+    model.summary()
+
+    X = load_split()
+    train_eval(model, X, only_eval=False, save_path=MODEL_PATH, size=2048, epochs=2)

@@ -5,12 +5,12 @@ from keras_self_attention import SeqSelfAttention
 from sklearn.model_selection import train_test_split
 
 from dataset import load_dataset
-from evaluation import train_eval_ecg
+from evaluation import train_eval_ecg, load_split, train_eval
 from generators import artefact_for_detection_ecg
 from see_rnn import show_features_1D, get_layer_outputs
 
 
-def build_network(input_shape):
+def build_attention_LSTM_network(input_shape):
     inputs = Input(input_shape)
     x = Conv1D(64, 20, activation="relu", padding='same')(inputs)
     x = MaxPool1D(2)(x)
@@ -18,38 +18,25 @@ def build_network(input_shape):
     x = MaxPool1D(2)(x)
 
     x = Bidirectional(LSTM(32, return_sequences=True))(x)
-    x = SeqSelfAttention(attention_activation='sigmoid')(x)
+    attention = SeqSelfAttention(attention_activation='sigmoid', return_attention=True)(x)
 
-    x = Conv1D(32, 20, activation="relu", padding='same')(x)
+    x = Conv1D(32, 20, activation="relu", padding='same')(attention[0])
     x = UpSampling1D(2)(x)
     x = Conv1D(64, 20, activation="relu", padding='same')(x)
     x = UpSampling1D(2)(x)
     decoded = Conv1D(6, 20, activation='softmax', padding='same')(x)
 
     autoencoder = Model(inputs, decoded)
+    attent = Model(inputs, attention[1])
     autoencoder.compile(optimizer='adam', loss='categorical_crossentropy')
-    return autoencoder
-
+    return autoencoder, attent
 
 if __name__ == "__main__":
-    model = build_network((None, 1))
+    MODEL_PATH = "attention_LSTM_detection"
+
+    model = build_attention_LSTM_network((None, 1))
+    # model = load_model(MODEL_PATH)
     model.summary()
-    MODEL_SAVE_PATH = "models\\attention_detection_ma.h5"
-    #model = load_model(MODEL_SAVE_PATH, custom_objects = {'SeqSelfAttention': SeqSelfAttention})
 
-    train_eval_ecg(model, should_eval=True, should_load=True, MODEL_SAVE_PATH=MODEL_SAVE_PATH)
-    X = load_dataset()['x']
-    X_train, X_test = train_test_split(X, test_size=0.25, random_state=42)
-    noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
-    gener = artefact_for_detection_ecg(X_train, 2048, 10, noise_type='ma', noise_prob=noise_prob)
-    X = next(gener)[0]
-    outs0 = get_layer_outputs(model, X, layer_idx=5)
-    outs = get_layer_outputs(model, X, layer_idx=6)
-
-    outs1 = get_layer_outputs(model, X, layer_idx=7)
-    for i in range(10):
-        plt.plot(X[i])
-        plt.show()
-        show_features_1D(outs0[i:i + 1], n_rows=8, show_borders=False)
-        show_features_1D(outs[i:i + 1], n_rows=8, show_borders=False)
-        show_features_1D(outs1[i:i + 1], n_rows=8, show_borders=False)
+    X = load_split()
+    train_eval(model, X, only_eval=True, save_path=MODEL_PATH, size=2048, epochs=150)

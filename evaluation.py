@@ -3,8 +3,8 @@ import numpy as np
 from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
 
-from dataset import load_holter, load_dataset
-from generators import artefact_for_detection_holter, artefact_for_detection_ecg
+from dataset import load_dataset
+from generators import artefact_for_detection
 
 
 def plot_results(model, data):
@@ -46,39 +46,63 @@ def evaluate(model, data):
     print("Mean F1 score: " + str((mean_f1 / classes).round(4)))
 
 
-def _train_eval(model, X, should_eval=True, should_load=False, MODEL_SAVE_PATH="models\\simple_detection_em.h5",
-                generator=artefact_for_detection_holter):
-    from keras.engine.saving import load_model
+def save_hist(h, name):
+    plt.plot(h.history['loss'])
+    plt.plot(h.history['val_loss'])
+    plt.legend(['loss', 'val_loss'])
+    plt.savefig("pics\\"+name+".png")
+    plt.clf()
+
+
+def train_model(model, x, save_path="simple_detection", generator=artefact_for_detection,
+                size=2048, epochs=150, noise_prob=None, noise_type='ma'):
     from keras.callbacks import ModelCheckpoint
 
-    X_train = X[0]
-    X_test = X[1]
-    size = 2048
-    noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
-    generator_train = generator(X_train, size, 10, noise_type='ma', noise_prob=noise_prob)
-    generator_test = generator(X_test, size, 500, noise_type='ma', noise_prob=noise_prob)
+    if noise_prob is None:
+        noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
+
+    X_train = x[0]
+    X_test = x[1]
+
+    generator_test = generator(X_test, size, 500, noise_type=noise_type, noise_prob=noise_prob)
     val = next(generator_test)
-    if should_eval:
-        # model = load_model(MODEL_SAVE_PATH)
-        evaluate(model, val)
-        plot_results(model, val)
-    else:
-        if should_load:
-            model = load_model(MODEL_SAVE_PATH)
 
-        checkpoint = ModelCheckpoint(MODEL_SAVE_PATH, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
-        callbacks_list = [checkpoint]
-        model.fit_generator(generator_train, epochs=150, steps_per_epoch=20, validation_data=val,
-                            callbacks=callbacks_list, verbose=1)
+    generator_train = generator(X_train, size, 10, noise_type='ma', noise_prob=noise_prob)
 
+    model_path = "models\\" + save_path + "_" + noise_type + ".h5"
+    checkpoint = ModelCheckpoint(model_path, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+    callbacks_list = [checkpoint]
 
-def train_eval_holter(model, should_eval=True, should_load=False, MODEL_SAVE_PATH="models\\simple_detection_em.h5"):
-    X_train = load_holter(1)
-    X_test = load_holter(2)
-    _train_eval(model, (X_train, X_test), should_eval, should_load, MODEL_SAVE_PATH, artefact_for_detection_holter)
+    h = model.fit_generator(generator_train, epochs=epochs, steps_per_epoch=20, validation_data=val,
+                        callbacks=callbacks_list, verbose=1)
+
+    save_hist(h, save_path)
+
+    return model
 
 
-def train_eval_ecg(model, should_eval=True, should_load=False, MODEL_SAVE_PATH="models\\simple_detection_em.h5"):
+def eval_model(model, x, generator=artefact_for_detection,
+               size=2048, noise_prob=None, noise_type='ma'):
+    if noise_prob is None:
+        noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
+
+    X_test = x[1]
+
+    generator_test = generator(X_test, size, 500, noise_type=noise_type, noise_prob=noise_prob)
+    val = next(generator_test)
+
+    evaluate(model, val)
+    plot_results(model, val)
+
+
+def train_eval(model, x, only_eval=False, save_path="simple_detection_em", generator=artefact_for_detection,
+               size=2048, epochs=150, noise_prob=None, noise_type='ma'):
+    if not only_eval:
+        model = train_model(model, x, save_path, generator, size, epochs, noise_prob, noise_type)
+    eval_model(model, x, generator, size, noise_prob, noise_type)
+
+
+def load_split():
     X = load_dataset()['x']
-    X_train, X_test = train_test_split(X, test_size=0.25, random_state=42, )
-    _train_eval(model, (X_train, X_test), should_eval, should_load, MODEL_SAVE_PATH, artefact_for_detection_ecg)
+    X_train, X_test = train_test_split(X, test_size=0.25, random_state=42)
+    return X_train, X_test
