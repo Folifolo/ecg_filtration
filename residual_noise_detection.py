@@ -1,8 +1,9 @@
+import numpy as np
 from keras.layers import *
 from keras.models import Model
 
-from dataset import *
-from evaluation import train_eval, load_split
+from dataset import load_good_holter
+from evaluation import train_eval
 
 
 def build_residual_network(input_shape):
@@ -50,8 +51,8 @@ if __name__ == "__main__":
     MODEL_PATH = "dense_detection"
 
     model = build_residual_network((None, 1))
-    # model = load_model(MODEL_PATH)
+    # model = load_model("models\\" + MODEL_PATH + "_ma.h5")
     model.summary()
 
-    X = load_split()
-    train_eval(model, X, only_eval=True, save_path=MODEL_PATH, size=2048, epochs=150)
+    X = load_good_holter()
+    train_eval(model, X, only_eval=False, save_path=MODEL_PATH, size=2048, epochs=150)

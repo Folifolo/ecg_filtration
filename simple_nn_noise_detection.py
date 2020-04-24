@@ -1,7 +1,8 @@
 from keras.layers import *
 from keras.models import Model
 
-from evaluation import load_split, train_eval
+from dataset import load_good_holter
+from evaluation import train_eval
 
 
 def build_simple_network(input_shape):
@@ -27,11 +28,11 @@ def build_simple_network(input_shape):
 
 
 if __name__ == "__main__":
-    MODEL_PATH = "simple_detection_1"
+    MODEL_PATH = "simple_detection"
 
     model = build_simple_network((None, 1))
-    # model = load_model(MODEL_PATH)
+    # model = load_model("models\\" + MODEL_PATH + "_ma.h5")
     model.summary()
 
-    X = load_split()
-    train_eval(model, X, only_eval=False, save_path=MODEL_PATH, size=2048, epochs=2)
+    X = load_good_holter()
+    train_eval(model, X, only_eval=False, save_path=MODEL_PATH, size=2048, epochs=50)

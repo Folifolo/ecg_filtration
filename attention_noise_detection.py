@@ -1,13 +1,9 @@
-import matplotlib.pyplot as plt
 from keras.layers import *
 from keras.models import Model
 from keras_self_attention import SeqSelfAttention
-from sklearn.model_selection import train_test_split
 
-from dataset import load_dataset
-from evaluation import train_eval_ecg, load_split, train_eval
-from generators import artefact_for_detection_ecg
-from see_rnn import show_features_1D, get_layer_outputs
+from dataset import load_good_holter
+from evaluation import train_eval
 
 
 def build_attention_LSTM_network(input_shape):
@@ -35,8 +31,8 @@ if __name__ == "__main__":
     MODEL_PATH = "attention_LSTM_detection"
 
     model = build_attention_LSTM_network((None, 1))
-    # model = load_model(MODEL_PATH)
+    # model = load_model("models\\" + MODEL_PATH + "_ma.h5")
     model.summary()
 
-    X = load_split()
-    train_eval(model, X, only_eval=True, save_path=MODEL_PATH, size=2048, epochs=150)
+    X = load_good_holter()
+    train_eval(model, X, only_eval=False, save_path=MODEL_PATH, size=2048, epochs=150)

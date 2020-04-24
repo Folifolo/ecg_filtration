@@ -5,7 +5,6 @@ import sys
 
 import BaselineWanderRemoval as bwr
 import numpy as np
-from random import randint
 
 DATA_PATH = "C:\\data\\"
 DATA_FILENAME = "data_2033.json"
@@ -106,10 +105,17 @@ def load_dataset(folder_path=DATA_PATH):
 
     return dataset
 
-def load_holter(patient = 0, folder_path=HOLTER_PATH):
+
+def load_holter(patient=0, folder_path=HOLTER_PATH):
     with open(folder_path + HOLTER_FILENAME + str(patient) + ".pkl", 'rb') as infile:
         dataset = pkl.load(infile)
     return dataset
+
+
+def load_good_holter():
+    x1 = load_holter(0)[1884000:1910500]
+    x2 = load_holter(0)[1590000:1617000]
+    return x1, x2
 
 
 def fix_bw(xy, folder_path):
@@ -137,19 +143,21 @@ def normalize_data(X):
         x_std[i] = (X[i] - mn) / st
     return x_std
 
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+
     xy = load_dataset()
     X = xy["x"]
     Y = xy["y"]
     diag_dict = get_diag_dict()
 
-    X = X/1000.0
+    X = X / 1000.0
 
     print(X.shape)
     print(Y.shape)
 
-    for i in np.arange(X.shape[0] -1, 0, - 1):
+    for i in np.arange(X.shape[0] - 1, 0, - 1):
         diags_norm_rythm = [0]
         diags_fibrilation = [15]
         diags_flutter = [16, 17, 18]
@@ -172,59 +180,55 @@ if __name__ == "__main__":
                 title += "\nextrasystole"
                 break
 
-        plt.figure(i, figsize=[12,8])
+        plt.figure(i, figsize=[12, 8])
         plt.suptitle(title)
 
-        plt.subplot(6,2,1)
+        plt.subplot(6, 2, 1)
         plt.plot(X[i, :, 0], color='black')
         plt.gca().set_title(LEADS_NAMES[0])
 
-        plt.subplot(6,2,3)
+        plt.subplot(6, 2, 3)
         plt.plot(X[i, :, 1], color='black')
         plt.gca().set_title(LEADS_NAMES[1])
 
-        plt.subplot(6,2,5)
+        plt.subplot(6, 2, 5)
         plt.plot(X[i, :, 2], color='black')
         plt.gca().set_title(LEADS_NAMES[2])
 
-        plt.subplot(6,2,7)
+        plt.subplot(6, 2, 7)
         plt.plot(X[i, :, 3], color='black')
         plt.gca().set_title(LEADS_NAMES[3])
 
-        plt.subplot(6,2,9)
+        plt.subplot(6, 2, 9)
         plt.plot(X[i, :, 4], color='black')
         plt.gca().set_title(LEADS_NAMES[4])
 
-        plt.subplot(6,2,11)
+        plt.subplot(6, 2, 11)
         plt.plot(X[i, :, 5], color='black')
         plt.gca().set_title(LEADS_NAMES[5])
 
-        plt.subplot(6,2,2)
+        plt.subplot(6, 2, 2)
         plt.plot(X[i, :, 6], color='black')
         plt.gca().set_title(LEADS_NAMES[6])
 
-        plt.subplot(6,2,4)
+        plt.subplot(6, 2, 4)
         plt.plot(X[i, :, 7], color='black')
         plt.gca().set_title(LEADS_NAMES[7])
 
-        plt.subplot(6,2,6)
+        plt.subplot(6, 2, 6)
         plt.plot(X[i, :, 8], color='black')
         plt.gca().set_title(LEADS_NAMES[8])
 
-        plt.subplot(6,2,8)
+        plt.subplot(6, 2, 8)
         plt.plot(X[i, :, 9], color='black')
         plt.gca().set_title(LEADS_NAMES[9])
 
-        plt.subplot(6,2,10)
+        plt.subplot(6, 2, 10)
         plt.plot(X[i, :, 10], color='black')
         plt.gca().set_title(LEADS_NAMES[10])
 
-        plt.subplot(6,2,12)
+        plt.subplot(6, 2, 12)
         plt.plot(X[i, :, 11], color='black')
         plt.gca().set_title(LEADS_NAMES[11])
-
-        #plt.figure(2)
-        #plt.plot(X[7, :, 6], color='black')
-        #plt.title(title)
 
         plt.show()

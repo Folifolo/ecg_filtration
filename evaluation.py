@@ -7,13 +7,28 @@ from dataset import load_dataset
 from generators import artefact_for_detection
 
 
-def plot_results(model, data):
-    y_val_cat_prob = model.predict(data[0])
+def get_predict_labels(model, data):
+    X_test, Y_test = data
+
+    y_val_cat_prob = model.predict(X_test)
     y_prediction = np.argmax(y_val_cat_prob, axis=-1)
-    y_labels = np.argmax(data[1], axis=-1)
+    y_labels = np.argmax(Y_test, axis=-1)
+    return y_prediction, y_labels
+
+
+def get_predict_labels_dual_out(model, data):
+    X_test, Y_test = data
+
+    y_val_cat_prob = model.predict(X_test)
+    y_prediction = np.argmax(y_val_cat_prob[0], axis=-1)
+    y_labels = np.argmax(Y_test[0], axis=-1)
+    return y_prediction, y_labels
+
+
+def plot_results(y_prediction, y_labels, x):
     for i in range(10):
         plt.subplot(7, 1, 1)
-        plt.plot(data[0][i, :, 0])
+        plt.plot(x[i, :, 0])
         for j in np.arange(2, 8):
             x_axis = np.arange(y_prediction.shape[1])
             plt.subplot(7, 1, j)
@@ -25,12 +40,8 @@ def plot_results(model, data):
         plt.show()
 
 
-def evaluate(model, data):
-    X_test, Y_test = data
+def evaluate(y_prediction, y_labels):
     mean_f1 = 0
-    y_val_cat_prob = model.predict(X_test)
-    y_prediction = np.argmax(y_val_cat_prob, axis=-1)
-    y_labels = np.argmax(Y_test, axis=-1)
     classes = np.max(y_labels) + 1
     for i in np.arange(np.max(y_labels) + 1):
         curr_pred = y_prediction == i
@@ -50,8 +61,35 @@ def save_hist(h, name):
     plt.plot(h.history['loss'])
     plt.plot(h.history['val_loss'])
     plt.legend(['loss', 'val_loss'])
-    plt.savefig("pics\\"+name+".png")
+    plt.savefig("pics\\" + name + ".png")
     plt.clf()
+
+
+def plot_confusion(y_prediction, y_labels):
+    import pandas as pd
+    import seaborn as sn
+    from sklearn.metrics import confusion_matrix
+    y_prediction = y_prediction.flatten()
+    y_labels = y_labels.flatten()
+    matr = confusion_matrix(y_labels, y_prediction) // 4096
+    df_cm = pd.DataFrame(matr)
+    plt.figure(figsize=(10, 7))
+    sn.heatmap(df_cm, annot=True)
+    plt.show()
+
+
+def new_metric(y_prediction, y_labels):
+    accuracy = 0.0
+    for i in range(y_prediction.shape[0]):
+        for j in range(y_prediction.shape[1]):
+            if (
+                    (y_prediction[i, j] == y_labels[i, j]) or
+                    (y_prediction[i, j] == y_labels[i, j] + 1) or
+                    (y_prediction[i, j] == y_labels[i, j] - 1)):
+                accuracy += 1.0
+    accuracy /= y_prediction.shape[0]
+    accuracy /= y_prediction.shape[1]
+    print("modified accuracy " + str(accuracy))
 
 
 def train_model(model, x, save_path="simple_detection", generator=artefact_for_detection,
@@ -59,7 +97,7 @@ def train_model(model, x, save_path="simple_detection", generator=artefact_for_d
     from keras.callbacks import ModelCheckpoint
 
     if noise_prob is None:
-        noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
+        noise_prob = [0.3, 0.1, 0.1, 0.1, 0.1, 0.3]
 
     X_train = x[0]
     X_test = x[1]
@@ -74,15 +112,37 @@ def train_model(model, x, save_path="simple_detection", generator=artefact_for_d
     callbacks_list = [checkpoint]
 
     h = model.fit_generator(generator_train, epochs=epochs, steps_per_epoch=20, validation_data=val,
-                        callbacks=callbacks_list, verbose=1)
+                            callbacks=callbacks_list)
 
     save_hist(h, save_path)
 
     return model
 
 
-def eval_model(model, x, generator=artefact_for_detection,
-               size=2048, noise_prob=None, noise_type='ma'):
+def eval_model(model, x, generator=artefact_for_detection, size=2048, noise_prob=None, noise_type='ma'):
+    if noise_prob is None:
+        noise_prob = [0.3, 0.1, 0.1, 0.1, 0.1, 0.3]
+
+    X_test = x[1]
+
+    generator_test = generator(X_test, size, 500, noise_type=noise_type, noise_prob=noise_prob)
+    val = next(generator_test)
+
+    y_prediction, y_labels = get_predict_labels(model, val)
+    evaluate(y_prediction, y_labels)
+
+    plot_results(y_prediction, y_labels, val[0][0])
+
+
+def train_eval(model, x, only_eval=False, save_path="simple_detection_em", generator=artefact_for_detection,
+               size=2048, epochs=150, noise_prob=None, noise_type='ma'):
+    if not only_eval:
+        model = train_model(model, x, save_path, generator, size, epochs, noise_prob, noise_type)
+    eval_model(model, x, generator, size, noise_prob, noise_type)
+    return model
+
+
+def test_arc(model, x, generator=artefact_for_detection, size=2048, noise_prob=None, noise_type='ma'):
     if noise_prob is None:
         noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
 
@@ -91,15 +151,42 @@ def eval_model(model, x, generator=artefact_for_detection,
     generator_test = generator(X_test, size, 500, noise_type=noise_type, noise_prob=noise_prob)
     val = next(generator_test)
 
-    evaluate(model, val)
-    plot_results(model, val)
+    X_test, Y_test = val
+    y_val_cat_prob = model.predict(X_test)
+    y_prediction = np.argmax(y_val_cat_prob, axis=-1)
+    y_labels = np.argmax(Y_test, axis=-1)
+    for i in range(len(X_test)):
+        qqq = np.sum(np.abs(y_labels[i, :] - y_prediction[i, :])) / 5
+        if qqq > 150:
+            print(qqq)
+            plt.subplot(211)
+            plt.plot(X_test[i])
+
+            plt.subplot(212)
+            plt.plot(y_labels[i])
+            plt.plot(y_prediction[i])
+            plt.legend(["label", "pred"])
+
+            plt.show()
 
 
-def train_eval(model, x, only_eval=False, save_path="simple_detection_em", generator=artefact_for_detection,
-               size=2048, epochs=150, noise_prob=None, noise_type='ma'):
-    if not only_eval:
-        model = train_model(model, x, save_path, generator, size, epochs, noise_prob, noise_type)
-    eval_model(model, x, generator, size, noise_prob, noise_type)
+def to_binary(y_labels):
+    class54 = y_labels == 5
+    class54 += y_labels == 4
+    class54 += y_labels == 3
+    res = np.zeros(y_labels.shape[0])
+    for i in range(y_labels.shape[0]):
+        if np.sum(class54[i]) > y_labels.shape[1] // 2:
+            res[i] = 1
+    return np.array(res)
+
+
+def binary_class(y_prediction, y_labels):
+    bin_labels = to_binary(y_labels)
+    bin_pred = to_binary(y_prediction)
+
+    curr_f1 = f1_score(bin_labels, bin_pred, average="macro")
+    print("F1 score binary == " + str(curr_f1.round(4)))
 
 
 def load_split():

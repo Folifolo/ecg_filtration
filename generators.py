@@ -38,14 +38,12 @@ def _generator_carcass(ecgs, size, batch_size, noise_type='ma', level=1):
 def noised_for_filtration(ecgs, size, batch_size, lead=0, noise_type='ma', level=1):
     while 1:
         (x_batch, y_batch) = _generator_carcass(ecgs[:, :, lead], size, batch_size, noise_type, level)
-        # (x_batch, y_batch) = _generator_carcass(ecgs, size, batch_size, noise_type, level)
         x_batch = np.expand_dims(x_batch, 2)
         y_batch = np.expand_dims(y_batch, 2)
         x_batch = np.expand_dims(x_batch, 3)
         y_batch = np.expand_dims(y_batch, 3)
 
         yield (x_batch, y_batch)
-        # yield (y_batch, x_batch)
 
 
 def noised_for_detection(ecgs, size, batch_size, lead=0, noise_type='ma', level=1):
@@ -108,7 +106,10 @@ def _generate_segment_artefact(ecg, type=0, noise_type='ma'):
         return _add_noise(ecg, noise_type, type)
     elif type == 5:
         noise_sample, _ = _get_noise_snr(noise_type, 1)
-        noise_power = np.array([0])
+        noise_start_position = randint(0, noise_sample.shape[0] - len(ecg) - 1)
+        noise_channel = randint(0, 1)
+        noise_fragment = noise_sample[noise_start_position:noise_start_position + len(ecg), noise_channel]
+        _, noise_power = periodogram(noise_fragment, 500)
         while np.mean(noise_power) == 0:
             noise_start_position = randint(0, noise_sample.shape[0] - len(ecg) - 1)
             noise_channel = randint(0, 1)
@@ -135,6 +136,7 @@ def artefact_for_detection(ecg, size, batch_size, noise_prob=None, noise_type='m
     while 1:
         ecg_batch = np.zeros((batch_size, size, 1))
         mask_batch = np.zeros((batch_size, size, 6))
+        mask_batch[:, :, 0] = np.ones((batch_size, size))
         for i in range(batch_size):
             x_tmp = choose_ecg_fragment(ecg, size)
             mask_tmp = np.zeros((size, 6))
@@ -152,24 +154,90 @@ def artefact_for_detection(ecg, size, batch_size, noise_prob=None, noise_type='m
         yield (ecg_batch, mask_batch)
 
 
+def autocorrelator(x):
+    result = np.correlate(x, x, mode='full')
+    return result[len(result) // 2:]
+
+
+def artefact_for_detection_3_in_2_out(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
+    if noise_prob is None:
+        noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
+    while 1:
+        ecg_batch = np.zeros((batch_size, size, 1))
+        ecg_batch1 = np.zeros((batch_size, size // 8, 1))
+        ecg_batch2 = np.zeros((batch_size, 500, 1))
+        mask_batch = np.zeros((batch_size, size, 6))
+        mask_batch[:, :, 0] = np.ones((batch_size, size))
+        mask_batch1 = np.zeros((batch_size, 2))
+        for i in range(batch_size):
+            x_tmp = choose_ecg_fragment(ecg, size)
+            mask_tmp = np.zeros((size, 6))
+            mask_tmp[:, 0] = np.ones(size)
+            intervals = create_mask(size)
+            for j in range(intervals.shape[0] - 1):
+                type = np.random.choice(6, p=noise_prob)
+                fragment = _generate_segment_artefact(x_tmp[intervals[j]:intervals[j + 1]], type, noise_type)
+                mask_tmp[intervals[j]:intervals[j + 1], 0] = 0
+                mask_tmp[intervals[j]:intervals[j + 1], type] = 1
+
+                x_tmp[intervals[j]:intervals[j + 1]] = fragment
+
+            ecg_batch[i, :, 0] = x_tmp
+            ecg_batch1[i, :, 0] = x_tmp[::8]
+            ecg_batch2[i, :, 0] = autocorrelator(x_tmp)[:500]
+            mask_batch[i] = mask_tmp
+            mask_batch1[i, 1] = np.sum(mask_tmp[:, 4:]) / mask_tmp.shape[0]
+            mask_batch1[i, 0] = 1 - mask_batch1[i, 1]
+        yield ([ecg_batch, ecg_batch1, ecg_batch2], [mask_batch, mask_batch1])
+
+
+def artefact_for_detection_dual(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
+    if noise_prob is None:
+        noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
+    while 1:
+        ecg_batch = np.zeros((batch_size, size, 1))
+        ecg_batch1 = np.zeros((batch_size, size // 8, 1))
+        mask_batch = np.zeros((batch_size, size, 6))
+        mask_batch[:, :, 0] = np.ones((batch_size, size))
+        for i in range(batch_size):
+            x_tmp = choose_ecg_fragment(ecg, size)
+            mask_tmp = np.zeros((size, 6))
+            mask_tmp[:, 0] = np.ones(size)
+            intervals = create_mask(size)
+            for j in range(intervals.shape[0] - 1):
+                type = np.random.choice(6, p=noise_prob)
+                fragment = _generate_segment_artefact(x_tmp[intervals[j]:intervals[j + 1]], type, noise_type)
+                mask_tmp[intervals[j]:intervals[j + 1], 0] = 0
+                mask_tmp[intervals[j]:intervals[j + 1], type] = 1
+
+                x_tmp[intervals[j]:intervals[j + 1]] = fragment
+
+            ecg_batch[i, :, 0] = x_tmp
+            ecg_batch1[i, :, 0] = x_tmp[::8]
+            mask_batch[i] = mask_tmp
+        yield ([ecg_batch, ecg_batch1], mask_batch)
+
+
 def choose_ecg_fragment(ecg, size):
     if ecg.ndim == 1:
         start_position = randint(0, ecg.shape[0] - size - 1)
-        x_tmp = ecg[start_position:start_position + size]
-        while np.mean(x_tmp)== 0:
+        ret = np.copy(ecg[start_position:start_position + size])
+        while np.max(ret) == np.min(ret):
             start_position = randint(0, ecg.shape[0] - size - 1)
-            x_tmp = ecg[start_position:start_position + size]
-    if ecg.ndim == 3:
+            ret = np.copy(ecg[start_position:start_position + size])
+    elif ecg.ndim == 3:
         ecg_num = randint(0, ecg.shape[0] - 1)
         start_position = randint(0, ecg.shape[1] - size - 1)
         ecg_lead = randint(0, ecg.shape[2] - 1)
-        x_tmp = ecg[ecg_num, start_position:start_position + size, ecg_lead]
-        while np.mean(x_tmp)== 0:
+        ret = ecg[ecg_num, start_position:start_position + size, ecg_lead]
+        while np.max(ret) == np.min(ret):
             ecg_num = randint(0, ecg.shape[0] - 1)
             start_position = randint(0, ecg.shape[1] - size - 1)
             ecg_lead = randint(0, ecg.shape[2] - 1)
-            x_tmp = ecg[ecg_num, start_position:start_position + size, ecg_lead]
-    return x_tmp
+            ret = ecg[ecg_num, start_position:start_position + size, ecg_lead]
+    else:
+        raise ValueError('Wrong ecg dimensionality')
+    return ret
 
 
 def create_mask(size, num_sections=10, min_size=300):
@@ -187,22 +255,16 @@ def create_mask(size, num_sections=10, min_size=300):
 
 def _add_noise(ecg, noise_type='em', level=1):
     size = len(ecg)
-
-    if noise_type not in ['em', 'bw', 'ma']:
-        raise ValueError('This noise type is not supported')
-    if level not in [1, 2, 3, 4]:
-        raise ValueError('This noise level is not supported')
-
     noise_sample, snr = _get_noise_snr(noise_type, level)
 
     noise_start_position = randint(0, noise_sample.shape[0] - size - 1)
     noise_channel = randint(0, 1)
     noise_fragment = noise_sample[noise_start_position:noise_start_position + size, noise_channel]
 
-    _, noise_power = periodogram(noise_fragment, 500)
-    _, ecg_power = periodogram(ecg, 500)
+    noise_power = np.sum(noise_fragment ** 2, axis=0)
+    ecg_power = np.sum(ecg ** 2, axis=0)
 
-    target_noise = (10 ** (-snr / 10)) * np.mean(ecg_power)
+    target_noise = ecg_power / (10 ** (snr / 10))
 
     noise_fragment = noise_fragment * sqrt(target_noise) / sqrt(np.mean(noise_power))
 
@@ -220,6 +282,8 @@ def _get_noise_snr(noise_type, level):
             snr = 0
         elif level == 4:
             snr = -6
+        else:
+            raise ValueError('This noise level is not supported')
     elif noise_type == 'em':
         noise_sample = em
         if level == 1:
@@ -230,6 +294,8 @@ def _get_noise_snr(noise_type, level):
             snr = -6
         elif level == 4:
             snr = -12
+        else:
+            raise ValueError('This noise level is not supported')
     elif noise_type == 'ma':
         noise_sample = ma
         if level == 1:
@@ -240,6 +306,10 @@ def _get_noise_snr(noise_type, level):
             snr = 0
         elif level == 4:
             snr = -6
+        else:
+            raise ValueError('This noise level is not supported')
+    else:
+        raise ValueError('This noise type is not supported')
 
     return noise_sample, snr
 
