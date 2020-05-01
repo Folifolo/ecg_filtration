@@ -4,10 +4,19 @@ from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
 
 from dataset import load_dataset
-from generators import artefact_for_detection
+from generators import artefact_for_detection, DEFAULT_NOISE_PROB
+
 
 
 def get_predict_labels(model, data):
+    if type(data[1]) is list:
+        y_prediction, y_labels = get_predict_labels_dual_out(model, data)
+    else:
+        y_prediction, y_labels = get_predict_labels_single_out(model, data)
+    return y_prediction, y_labels
+
+
+def get_predict_labels_single_out(model, data):
     X_test, Y_test = data
 
     y_val_cat_prob = model.predict(X_test)
@@ -26,9 +35,9 @@ def get_predict_labels_dual_out(model, data):
 
 
 def plot_results(y_prediction, y_labels, x):
-    for i in range(10):
+    for i in range(len(y_prediction)):
         plt.subplot(7, 1, 1)
-        plt.plot(x[i, :, 0])
+        plt.plot(x[0][i, :, 0])
         for j in np.arange(2, 8):
             x_axis = np.arange(y_prediction.shape[1])
             plt.subplot(7, 1, j)
@@ -40,7 +49,7 @@ def plot_results(y_prediction, y_labels, x):
         plt.show()
 
 
-def evaluate(y_prediction, y_labels):
+def calculate_f1(y_prediction, y_labels):
     mean_f1 = 0
     classes = np.max(y_labels) + 1
     for i in np.arange(np.max(y_labels) + 1):
@@ -71,10 +80,10 @@ def plot_confusion(y_prediction, y_labels):
     from sklearn.metrics import confusion_matrix
     y_prediction = y_prediction.flatten()
     y_labels = y_labels.flatten()
-    matr = confusion_matrix(y_labels, y_prediction) // 4096
+    matr = confusion_matrix(y_labels, y_prediction) / 4096/2000
     df_cm = pd.DataFrame(matr)
     plt.figure(figsize=(10, 7))
-    sn.heatmap(df_cm, annot=True)
+    sn.heatmap(df_cm, annot=True, cmap="Blues")
     plt.show()
 
 
@@ -90,6 +99,7 @@ def new_metric(y_prediction, y_labels):
     accuracy /= y_prediction.shape[0]
     accuracy /= y_prediction.shape[1]
     print("modified accuracy " + str(accuracy))
+    return  accuracy
 
 
 def train_model(model, x, save_path="simple_detection", generator=artefact_for_detection,
@@ -97,7 +107,7 @@ def train_model(model, x, save_path="simple_detection", generator=artefact_for_d
     from keras.callbacks import ModelCheckpoint
 
     if noise_prob is None:
-        noise_prob = [0.3, 0.1, 0.1, 0.1, 0.1, 0.3]
+        noise_prob = DEFAULT_NOISE_PROB
 
     X_train = x[0]
     X_test = x[1]
@@ -121,17 +131,21 @@ def train_model(model, x, save_path="simple_detection", generator=artefact_for_d
 
 def eval_model(model, x, generator=artefact_for_detection, size=2048, noise_prob=None, noise_type='ma'):
     if noise_prob is None:
-        noise_prob = [0.3, 0.1, 0.1, 0.1, 0.1, 0.3]
+        noise_prob = DEFAULT_NOISE_PROB
 
     X_test = x[1]
 
-    generator_test = generator(X_test, size, 500, noise_type=noise_type, noise_prob=noise_prob)
+    generator_test = generator(X_test, size, 2000, noise_type=noise_type, noise_prob=noise_prob)
     val = next(generator_test)
 
     y_prediction, y_labels = get_predict_labels(model, val)
-    evaluate(y_prediction, y_labels)
 
-    plot_results(y_prediction, y_labels, val[0][0])
+    calculate_f1(y_prediction, y_labels)
+    new_metric(y_prediction, y_labels)
+    binary_class(y_prediction, y_labels)
+
+    #plot_confusion(y_prediction, y_labels)
+    plot_results(y_prediction, y_labels, val[0])
 
 
 def train_eval(model, x, only_eval=False, save_path="simple_detection_em", generator=artefact_for_detection,
@@ -144,7 +158,7 @@ def train_eval(model, x, only_eval=False, save_path="simple_detection_em", gener
 
 def test_arc(model, x, generator=artefact_for_detection, size=2048, noise_prob=None, noise_type='ma'):
     if noise_prob is None:
-        noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
+        noise_prob = DEFAULT_NOISE_PROB
 
     X_test = x[1]
 

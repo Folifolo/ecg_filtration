@@ -114,7 +114,9 @@ def load_holter(patient=0, folder_path=HOLTER_PATH):
 
 def load_good_holter():
     x1 = load_holter(0)[1884000:1910500]
-    x2 = load_holter(0)[1590000:1617000]
+
+    x2 = load_holter(0)[368000: 549500]
+    #x2 = load_holter(0)[1590000:1617000]
     return x1, x2
 
 

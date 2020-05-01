@@ -50,4 +50,4 @@ if __name__ == "__main__":
 
     X = load_good_holter()
     train_eval(model, X, only_eval=False, save_path=MODEL_PATH, generator=artefact_for_detection_dual,
-               size=4096, epochs=100, noise_prob=[0.2, 0.2, 0.2, 0.2, 0.2, 0])
+               size=4096, epochs=100)

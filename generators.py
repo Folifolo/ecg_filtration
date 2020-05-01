@@ -7,6 +7,8 @@ import numpy as np
 from scipy import interpolate
 from scipy.signal import cwt, ricker, periodogram
 
+DEFAULT_NOISE_PROB = [1/6,1/6,1/6,1/6,1/6,1/6]
+
 em_path = 'em' + "_500Hz.pkl"
 ma_path = 'ma' + "_500Hz.pkl"
 bw_path = 'bw' + "_500Hz.pkl"
@@ -132,7 +134,7 @@ def _generate_segment_artefact(ecg, type=0, noise_type='ma'):
 
 def artefact_for_detection(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
     if noise_prob is None:
-        noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
+        noise_prob = DEFAULT_NOISE_PROB
     while 1:
         ecg_batch = np.zeros((batch_size, size, 1))
         mask_batch = np.zeros((batch_size, size, 6))
@@ -140,10 +142,12 @@ def artefact_for_detection(ecg, size, batch_size, noise_prob=None, noise_type='m
         for i in range(batch_size):
             x_tmp = choose_ecg_fragment(ecg, size)
             mask_tmp = np.zeros((size, 6))
+            mask_tmp[:, 0] = np.ones((size))
             intervals = create_mask(size)
             for j in range(intervals.shape[0] - 1):
                 type = np.random.choice(6, p=noise_prob)
                 fragment = _generate_segment_artefact(x_tmp[intervals[j]:intervals[j + 1]], type, noise_type)
+                mask_tmp[intervals[j]:intervals[j + 1], 0] = 0
                 mask_tmp[intervals[j]:intervals[j + 1], type] = 1
 
                 x_tmp[intervals[j]:intervals[j + 1]] = fragment
@@ -161,10 +165,11 @@ def autocorrelator(x):
 
 def artefact_for_detection_3_in_2_out(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
     if noise_prob is None:
-        noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
+        noise_prob = DEFAULT_NOISE_PROB
+    denum = 16
     while 1:
         ecg_batch = np.zeros((batch_size, size, 1))
-        ecg_batch1 = np.zeros((batch_size, size // 8, 1))
+        ecg_batch1 = np.zeros((batch_size, size // denum, 1))
         ecg_batch2 = np.zeros((batch_size, 500, 1))
         mask_batch = np.zeros((batch_size, size, 6))
         mask_batch[:, :, 0] = np.ones((batch_size, size))
@@ -183,7 +188,7 @@ def artefact_for_detection_3_in_2_out(ecg, size, batch_size, noise_prob=None, no
                 x_tmp[intervals[j]:intervals[j + 1]] = fragment
 
             ecg_batch[i, :, 0] = x_tmp
-            ecg_batch1[i, :, 0] = x_tmp[::8]
+            ecg_batch1[i, :, 0] = x_tmp[::denum]
             ecg_batch2[i, :, 0] = autocorrelator(x_tmp)[:500]
             mask_batch[i] = mask_tmp
             mask_batch1[i, 1] = np.sum(mask_tmp[:, 4:]) / mask_tmp.shape[0]
@@ -193,7 +198,7 @@ def artefact_for_detection_3_in_2_out(ecg, size, batch_size, noise_prob=None, no
 
 def artefact_for_detection_dual(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
     if noise_prob is None:
-        noise_prob = [0.5, 0.0, 0.0, 0.0, 0.0, 0.5]
+        noise_prob = DEFAULT_NOISE_PROB
     while 1:
         ecg_batch = np.zeros((batch_size, size, 1))
         ecg_batch1 = np.zeros((batch_size, size // 8, 1))
@@ -201,6 +206,7 @@ def artefact_for_detection_dual(ecg, size, batch_size, noise_prob=None, noise_ty
         mask_batch[:, :, 0] = np.ones((batch_size, size))
         for i in range(batch_size):
             x_tmp = choose_ecg_fragment(ecg, size)
+
             mask_tmp = np.zeros((size, 6))
             mask_tmp[:, 0] = np.ones(size)
             intervals = create_mask(size)
@@ -222,19 +228,11 @@ def choose_ecg_fragment(ecg, size):
     if ecg.ndim == 1:
         start_position = randint(0, ecg.shape[0] - size - 1)
         ret = np.copy(ecg[start_position:start_position + size])
-        while np.max(ret) == np.min(ret):
-            start_position = randint(0, ecg.shape[0] - size - 1)
-            ret = np.copy(ecg[start_position:start_position + size])
     elif ecg.ndim == 3:
         ecg_num = randint(0, ecg.shape[0] - 1)
         start_position = randint(0, ecg.shape[1] - size - 1)
         ecg_lead = randint(0, ecg.shape[2] - 1)
-        ret = ecg[ecg_num, start_position:start_position + size, ecg_lead]
-        while np.max(ret) == np.min(ret):
-            ecg_num = randint(0, ecg.shape[0] - 1)
-            start_position = randint(0, ecg.shape[1] - size - 1)
-            ecg_lead = randint(0, ecg.shape[2] - 1)
-            ret = ecg[ecg_num, start_position:start_position + size, ecg_lead]
+        ret = np.copy(ecg[ecg_num, start_position:start_position + size, ecg_lead])
     else:
         raise ValueError('Wrong ecg dimensionality')
     return ret
