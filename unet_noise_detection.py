@@ -32,7 +32,7 @@ def build_unet_1d(
         use_dropout_on_upsampling=False,
         dropout=0.5,
         dropout_change_per_layer=0.0,
-        filters=64,
+        filters=16,
         num_layers=3,
         output_activation='softmax'):  # 'sigmoid' or 'softmax'
 

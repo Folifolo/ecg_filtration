@@ -3,7 +3,7 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 from attention_conv_noise_detection import build_attention_conv_network
 from attention_noise_detection import build_attention_LSTM_network
-from dataset import load_good_holter, load_dataset
+from dataset import load_good_holter, load_dataset, load_mit
 from dual_input_noise_detection import build_dual_input_network
 from evaluation import train_eval, load_split
 from generators import artefact_for_detection_dual, artefact_for_detection_3_in_2_out, artefact_for_detection
@@ -19,21 +19,13 @@ models = {"simple_detection": build_simple_network,
           "dense_detection": build_residual_network,
           "dual_detection": build_dual_input_network,
           "triple_detection": build_triple_detection_network,
-          #"unet_detection": build_unet_1d,
-          # "recurrent_detection": build_recurrent_network,
-          # "attention_LSTM_detection": build_attention_LSTM_network,
+          "unet_detection": build_unet_1d,
+           "recurrent_detection": build_recurrent_network,
+           "attention_LSTM_detection": build_attention_LSTM_network,
           # "attention_conv_detection": build_attention_conv_network
           }
 
 if __name__ == "__main__":
-    import tensorflow as tf
-    from keras.backend.tensorflow_backend import set_session
-
-    config = tf.ConfigProto()
-    config.gpu_options.per_process_gpu_memory_fraction = 0.33
-    set_session(tf.Session(config=config))
-
-
     for name in models:
 
         if name == "triple_detection":
@@ -41,7 +33,7 @@ if __name__ == "__main__":
         else:
             model = models[name]((None, 1))
 
-        model = load_model("models\\" + name + "_p_ma.h5")
+        #model = load_model("models\\" + name + "_mit_5_ma.h5")
         # model.summary()
 
         if name == "dual_detection":
@@ -51,9 +43,9 @@ if __name__ == "__main__":
         else:
             generator = artefact_for_detection
 
-        X = load_split()
-        res = X
-        path = "C:\\Users\\admin\\PycharmProjects\\noise\\noise_lbl.csv"
+        res = load_split()
+
+        path = "C:\\Users\\donte_000\\Downloads\\Telegram Desktop\\noise_lbl.csv"
         idxs = pd.read_csv(path, encoding='utf-8', sep=";")['i']
         xy = load_dataset()
         X = xy["x"]
@@ -61,10 +53,12 @@ if __name__ == "__main__":
         x = np.expand_dims(x, 2)
         res1 = [0, 0]
         res1[0], res1[1] = train_test_split(x, test_size=0.25, random_state=42)
-
-        print()
-        print(name)
-        print()
+        
         res2 = load_good_holter()
-        train_eval(model, (res1[0], res1[1]), only_eval=True, save_path=name+"_p", generator=generator, size=4096, epochs=50,
+        
+        res3 = [0, 0]
+        X = load_mit()
+        res3[0], res3[1] = train_test_split(X, test_size=0.1, random_state=42)
+
+        train_eval(model, (res3[0], res3[1]), only_eval=False, save_path=name+"_mit_5", generator=generator, size=4096, epochs=50,
                    noise_prob=[1/5,1/5,1/5,1/5,1/5,0])

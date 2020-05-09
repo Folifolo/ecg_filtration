@@ -7,7 +7,7 @@ import numpy as np
 from scipy import interpolate
 from scipy.signal import cwt, ricker, periodogram
 
-DEFAULT_NOISE_PROB = [1/6,1/6,1/6,1/6,1/6,1/6]
+DEFAULT_NOISE_PROB = [1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6, 1 / 6]
 
 em_path = 'em' + "_500Hz.pkl"
 ma_path = 'ma' + "_500Hz.pkl"
@@ -132,6 +132,11 @@ def _generate_segment_artefact(ecg, type=0, noise_type='ma'):
         return noise_fragment
 
 
+def autocorrelator(x):
+    result = np.correlate(x, x, mode='full')
+    return result[len(result) // 2:]
+
+
 def artefact_for_detection(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
     if noise_prob is None:
         noise_prob = DEFAULT_NOISE_PROB
@@ -158,12 +163,7 @@ def artefact_for_detection(ecg, size, batch_size, noise_prob=None, noise_type='m
         yield (ecg_batch, mask_batch)
 
 
-def autocorrelator(x):
-    result = np.correlate(x, x, mode='full')
-    return result[len(result) // 2:]
-
-
-def artefact_for_detection_3_in_2_out(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
+def artefact_for_detection_3_in_2_out(ecg, size, batch_size, noise_prob=None, noise_type='ma', num_sections=0):
     if noise_prob is None:
         noise_prob = DEFAULT_NOISE_PROB
     denum = 16
@@ -178,7 +178,7 @@ def artefact_for_detection_3_in_2_out(ecg, size, batch_size, noise_prob=None, no
             x_tmp = choose_ecg_fragment(ecg, size)
             mask_tmp = np.zeros((size, 6))
             mask_tmp[:, 0] = np.ones(size)
-            intervals = create_mask(size)
+            intervals = create_mask(size, num_sections)
             for j in range(intervals.shape[0] - 1):
                 type = np.random.choice(6, p=noise_prob)
                 fragment = _generate_segment_artefact(x_tmp[intervals[j]:intervals[j + 1]], type, noise_type)
@@ -239,8 +239,11 @@ def choose_ecg_fragment(ecg, size):
 
 
 def create_mask(size, num_sections=10, min_size=300):
-    intervals = np.random.randint(size, size=num_sections)
-    intervals = np.append(intervals, [0, size])
+    if num_sections != 0:
+        intervals = np.random.randint(size, size=num_sections)
+        intervals = np.append(intervals, [0, size])
+    else:
+        intervals = np.array([0, size])
     intervals = np.sort(intervals)
     difference = np.diff(intervals)
     counter = 0
@@ -379,10 +382,19 @@ def resize_noise(noise, name, old_freq=360, new_freq=500):
 if __name__ == "__main__":
     import scipy.io as sio
     import glob
+    import wfdb
+    lst = [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 111, 112, 113, 114, 115, 116,
+           117, 118, 119, 121, 122, 123, 124, 200, 201, 202, 203, 205, 207, 208, 209, 210,
+           212, 213, 214, 215, 217, 219, 220, 221, 222, 223, 228, 230, 231, 232, 233, 234]
+    res = []
+    for elem in lst:
+        rec = np.zeros((902500, 2))
+        record = wfdb.rdsamp('mit\\' + str(elem))
+        record = record[0]
+        rec[:,0] = _resize_signal(record[:,0])
+        rec[:,1] = _resize_signal(record[:,1])
+        res.append(np.array(rec))
+    res = np.array(res)
+    with open("mit\\mit_dataset.pkl", 'wb') as output:
+        pkl.dump(res, output)
 
-    data_files = glob.glob("D:\\data\\holters\\" + "*.mat")
-    for i, data_file in enumerate(data_files):
-        ecg_data = sio.loadmat(data_file)['ecg'].squeeze()
-        data = _resize_signal(ecg_data, old_freq=400, new_freq=500)
-        with open("D:\\data\\holters\\holter" + str(i) + '.pkl', 'wb') as output:
-            pkl.dump(data, output)

@@ -7,7 +7,6 @@ from dataset import load_dataset
 from generators import artefact_for_detection, DEFAULT_NOISE_PROB
 
 
-
 def get_predict_labels(model, data):
     if type(data[1]) is list:
         y_prediction, y_labels = get_predict_labels_dual_out(model, data)
@@ -66,6 +65,7 @@ def calculate_f1(y_prediction, y_labels):
     print("Mean F1 score: " + str((mean_f1 / classes).round(4)))
 
 
+
 def save_hist(h, name):
     plt.plot(h.history['loss'])
     plt.plot(h.history['val_loss'])
@@ -80,7 +80,7 @@ def plot_confusion(y_prediction, y_labels):
     from sklearn.metrics import confusion_matrix
     y_prediction = y_prediction.flatten()
     y_labels = y_labels.flatten()
-    matr = confusion_matrix(y_labels, y_prediction) / 4096/2000
+    matr = confusion_matrix(y_labels, y_prediction) / 4096 / 2000
     df_cm = pd.DataFrame(matr)
     plt.figure(figsize=(10, 7))
     sn.heatmap(df_cm, annot=True, cmap="Blues")
@@ -99,11 +99,23 @@ def new_metric(y_prediction, y_labels):
     accuracy /= y_prediction.shape[0]
     accuracy /= y_prediction.shape[1]
     print("modified accuracy " + str(accuracy))
-    return  accuracy
+    return accuracy
+
+def new_metric_binary(y_prediction, y_labels):
+    accuracy = 0.0
+    for i in range(y_prediction.shape[0]):
+        if (
+                (y_prediction[i] == y_labels[i]) or
+                (y_prediction[i] == y_labels[i] + 1) or
+                (y_prediction[i] == y_labels[i] - 1)):
+            accuracy += 1.0
+    accuracy /= y_prediction.shape[0]
+    print("modified accuracy " + str(accuracy))
+    return accuracy
 
 
 def train_model(model, x, save_path="simple_detection", generator=artefact_for_detection,
-                size=2048, epochs=150, noise_prob=None, noise_type='ma'):
+                size=2048, epochs=150, noise_prob=None, noise_type='ma', interv = 10):
     from keras.callbacks import ModelCheckpoint
 
     if noise_prob is None:
@@ -144,7 +156,35 @@ def eval_model(model, x, generator=artefact_for_detection, size=2048, noise_prob
     new_metric(y_prediction, y_labels)
     binary_class(y_prediction, y_labels)
 
-    #plot_confusion(y_prediction, y_labels)
+    # plot_confusion(y_prediction, y_labels)
+    plot_results(y_prediction, y_labels, val[0])
+
+
+def eval_model_binary(model, x, generator=artefact_for_detection, size=2048, noise_prob=None, noise_type='ma'):
+    if noise_prob is None:
+        noise_prob = DEFAULT_NOISE_PROB
+
+    X_test = x[1]
+
+    generator_test = generator(X_test, size, 2000, noise_type=noise_type, noise_prob=noise_prob)
+    val = next(generator_test)
+
+    y_prediction, y_labels = get_predict_labels(model, val)
+    new_pred = []
+    new_labels = []
+    for i in range(y_prediction.shape[0]):
+        unique_pred, counts_pred = np.unique(y_prediction[i], return_counts=True)
+        unique_labels, counts_labels = np.unique(y_labels[i], return_counts=True)
+        new_labels.append(unique_labels[np.argmax(counts_labels)])
+        new_pred.append(unique_pred[np.argmax(counts_pred)])
+        
+    new_labels = np.array(new_labels)
+    new_pred = np.array(new_pred)
+        
+    calculate_f1(new_pred, new_labels)
+    new_metric_binary(new_pred, new_labels)
+
+    # plot_confusion(y_prediction, y_labels)
     plot_results(y_prediction, y_labels, val[0])
 
 
@@ -152,7 +192,7 @@ def train_eval(model, x, only_eval=False, save_path="simple_detection_em", gener
                size=2048, epochs=150, noise_prob=None, noise_type='ma'):
     if not only_eval:
         model = train_model(model, x, save_path, generator, size, epochs, noise_prob, noise_type)
-    eval_model(model, x, generator, size, noise_prob, noise_type)
+    eval_model_binary(model, x, generator, size, noise_prob, noise_type)
     return model
 
 
@@ -206,4 +246,5 @@ def binary_class(y_prediction, y_labels):
 def load_split():
     X = load_dataset()['x']
     X_train, X_test = train_test_split(X, test_size=0.25, random_state=42)
+    #X_val, X_test = train_test_split(X_test, test_size=0.25, random_state=42)
     return X_train, X_test

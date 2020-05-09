@@ -7,18 +7,18 @@ from evaluation import train_eval
 
 def build_simple_network(input_shape):
     inputs = Input(input_shape)
-    x = Conv1D(64, 20, activation="relu", padding='same')(inputs)
+    x = Conv1D(16, 20, activation="relu", padding='same')(inputs)
     x = MaxPool1D(2)(x)
     x = Conv1D(32, 20, activation="relu", padding='same')(x)
     x = MaxPool1D(2)(x)
-    x = Conv1D(16, 20, activation="relu", padding='same')(x)
+    x = Conv1D(64, 20, activation="relu", padding='same')(x)
     encoded = MaxPooling1D(2)(x)
 
-    x = Conv1D(16, 20, activation="relu", padding='same')(encoded)
+    x = Conv1D(64, 20, activation="relu", padding='same')(encoded)
     x = UpSampling1D(2)(x)
     x = Conv1D(32, 20, activation="relu", padding='same')(x)
     x = UpSampling1D(2)(x)
-    x = Conv1D(64, 20, activation="relu", padding='same')(x)
+    x = Conv1D(16, 20, activation="relu", padding='same')(x)
     x = UpSampling1D(2)(x)
     decoded = Conv1D(6, 20, activation='softmax', padding='same')(x)
 

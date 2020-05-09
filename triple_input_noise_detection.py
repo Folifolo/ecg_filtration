@@ -12,15 +12,15 @@ from generators import artefact_for_detection_3_in_2_out
 
 def build_support_net():
     input = Input((500, 1))
-    y = Conv1D(64, 10, activation="relu")(input)
-    y = MaxPool1D(2)(y)
-    y = Conv1D(64, 10, activation="relu")(y)
-    y = MaxPool1D(2)(y)
-    y = Conv1D(32, 10, activation="relu")(y)
-    y = MaxPool1D(2)(y)
-    y = Conv1D(32, 10, activation="relu")(y)
+    y = Conv1D(16, 10, activation="relu")(input)
     y = MaxPool1D(2)(y)
     y = Conv1D(16, 10, activation="relu")(y)
+    y = MaxPool1D(2)(y)
+    y = Conv1D(32, 10, activation="relu")(y)
+    y = MaxPool1D(2)(y)
+    y = Conv1D(32, 10, activation="relu")(y)
+    y = MaxPool1D(2)(y)
+    y = Conv1D(64, 10, activation="relu")(y)
     y = Flatten()(y)
     y_out = Dense(2, activation="sigmoid")(y)
     return input, y_out
@@ -41,16 +41,16 @@ def build_triple_detection_network(input_shape):
     y_input, y_out = build_support_net()
     inputs.append(y_input)
 
-    x = Conv1D(64, kernel1, activation="relu", dilation_rate=dil1, padding='same')(inputs[0])
-    x1 = Conv1D(64, kernel2, activation="relu", dilation_rate=dil2, padding='same')(inputs[1])
+    x = Conv1D(16, kernel1, activation="relu", dilation_rate=dil1, padding='same')(inputs[0])
+    x1 = Conv1D(16, kernel2, activation="relu", dilation_rate=dil2, padding='same')(inputs[1])
     x = MaxPool1D(2)(x)
     x1 = MaxPool1D(2)(x1)
     x = Conv1D(32, kernel1, activation="relu", dilation_rate=dil1, padding='same')(x)
     x1 = Conv1D(32, kernel2, activation="relu", dilation_rate=dil2, padding='same')(x1)
     x = MaxPool1D(2)(x)
     x1 = MaxPool1D(2)(x1)
-    x = Conv1D(16, kernel1, activation="relu", dilation_rate=dil1, padding='same')(x)
-    x1 = Conv1D(16, kernel2, activation="relu", dilation_rate=dil2, padding='same')(x1)
+    x = Conv1D(64, kernel1, activation="relu", dilation_rate=dil1, padding='same')(x)
+    x1 = Conv1D(64, kernel2, activation="relu", dilation_rate=dil2, padding='same')(x1)
     x = MaxPool1D(2)(x)
     x1 = UpSampling1D(denum//2)(x1)
 
@@ -60,11 +60,11 @@ def build_triple_detection_network(input_shape):
     y = Reshape((input_shape[0] // 8, 2))(y)
     x = concatenate([x, y], -1)
 
-    x = Conv1D(16, kernel1, activation="relu", dilation_rate=dil1, padding='same')(x)
+    x = Conv1D(64, kernel1, activation="relu", dilation_rate=dil1, padding='same')(x)
     x = UpSampling1D(2)(x)
     x = Conv1D(32, kernel1, activation="relu", dilation_rate=dil1, padding='same')(x)
     x = UpSampling1D(2)(x)
-    x = Conv1D(64, kernel1, activation="relu", dilation_rate=dil1, padding='same')(x)
+    x = Conv1D(16, kernel1, activation="relu", dilation_rate=dil1, padding='same')(x)
     x = UpSampling1D(2)(x)
 
     out = Conv1D(6, kernel1, activation='softmax', padding='same')(x)
@@ -89,7 +89,7 @@ if __name__ == "__main__":
 
     model = build_triple_detection_network((4096, 1))
     plot_model(model)
-    #model = load_model("models\\" + MODEL_PATH + "_ma.h5")
+    model = load_model("models\\" + MODEL_PATH + "_ma.h5")
     model.summary()
     X = load_good_holter()
 

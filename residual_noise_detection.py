@@ -9,7 +9,7 @@ from evaluation import train_eval
 def build_residual_network(input_shape):
     input_ecg = Input(shape=input_shape)
 
-    x = Conv1D(64, 20, padding='same', activation='relu')(input_ecg)
+    x = Conv1D(16, 20, padding='same', activation='relu')(input_ecg)
     x = BatchNormalization()(x)
 
     x = residual_block(4, x)
@@ -19,7 +19,7 @@ def build_residual_network(input_shape):
     x = BatchNormalization()(x)
     x = MaxPool1D(2)(x)
 
-    x = Conv1D(16, 20, padding='same', activation='relu')(x)
+    x = Conv1D(64, 20, padding='same', activation='relu')(x)
     encoder = BatchNormalization()(x)
 
     x = UpSampling1D(2)(encoder)
@@ -27,7 +27,7 @@ def build_residual_network(input_shape):
     x = BatchNormalization()(x)
 
     x = UpSampling1D(2)(x)
-    x = residual_block(4, x)
+    #x = residual_block(4, x)
 
     decoder = Conv1D(6, 20, padding='same', activation='softmax')(x)
 
@@ -37,8 +37,8 @@ def build_residual_network(input_shape):
 
 
 def residual_block(size, input_layer, conv_size=20, filters_num=20):
-    for i in np.arange(1, size):
-        dil = [i ** 2]
+    for i in np.arange(0, size-1):
+        dil = [2 ** i]
         x = Conv1D(filters_num, conv_size, dilation_rate=dil, padding='same', activation='relu')(input_layer)
         x = BatchNormalization()(x)
         x = Conv1D(filters_num, conv_size, dilation_rate=dil, padding='same', activation='relu')(x)
