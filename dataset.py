@@ -14,6 +14,7 @@ HOLTER_PATH = "holters\\"
 HOLTER_FILENAME = "holter"
 MIT_PATH = "mit\\mit_dataset.pkl"
 
+
 LEADS_NAMES = ['i', 'ii', 'iii', 'avr', 'avl', 'avf', 'v1', 'v2', 'v3', 'v4', 'v5', 'v6']
 FREQUENCY_OF_DATASET = 500
 
@@ -122,7 +123,7 @@ def load_good_holter():
 
 def load_mit():
     with open(MIT_PATH, 'rb') as infile:
-        dataset = pkl.load(infile)[:,:,:1]
+        dataset = pkl.load(infile)[:,:,:]
     return dataset
 
 

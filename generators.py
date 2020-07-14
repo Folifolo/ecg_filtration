@@ -137,7 +137,7 @@ def autocorrelator(x):
     return result[len(result) // 2:]
 
 
-def artefact_for_detection(ecg, size, batch_size, noise_prob=None, noise_type='ma'):
+def artefact_for_detection(ecg, size, batch_size, noise_prob=None, noise_type='ma', num_sections=10):
     if noise_prob is None:
         noise_prob = DEFAULT_NOISE_PROB
     while 1:
@@ -148,7 +148,7 @@ def artefact_for_detection(ecg, size, batch_size, noise_prob=None, noise_type='m
             x_tmp = choose_ecg_fragment(ecg, size)
             mask_tmp = np.zeros((size, 6))
             mask_tmp[:, 0] = np.ones((size))
-            intervals = create_mask(size)
+            intervals = create_mask(size, num_sections)
             for j in range(intervals.shape[0] - 1):
                 type = np.random.choice(6, p=noise_prob)
                 fragment = _generate_segment_artefact(x_tmp[intervals[j]:intervals[j + 1]], type, noise_type)
@@ -163,7 +163,7 @@ def artefact_for_detection(ecg, size, batch_size, noise_prob=None, noise_type='m
         yield (ecg_batch, mask_batch)
 
 
-def artefact_for_detection_3_in_2_out(ecg, size, batch_size, noise_prob=None, noise_type='ma', num_sections=0):
+def artefact_for_detection_3_in_2_out(ecg, size, batch_size, noise_prob=None, noise_type='ma', num_sections=10):
     if noise_prob is None:
         noise_prob = DEFAULT_NOISE_PROB
     denum = 16
@@ -276,18 +276,6 @@ def _get_noise_snr(noise_type, level):
     if noise_type == 'bw':
         noise_sample = bw
         if level == 1:
-            snr = 12
-        elif level == 2:
-            snr = 6
-        elif level == 3:
-            snr = 0
-        elif level == 4:
-            snr = -6
-        else:
-            raise ValueError('This noise level is not supported')
-    elif noise_type == 'em':
-        noise_sample = em
-        if level == 1:
             snr = 6
         elif level == 2:
             snr = 0
@@ -295,6 +283,18 @@ def _get_noise_snr(noise_type, level):
             snr = -6
         elif level == 4:
             snr = -12
+        else:
+            raise ValueError('This noise level is not supported')
+    elif noise_type == 'em':
+        noise_sample = em
+        if level == 1:
+            snr = 12
+        elif level == 2:
+            snr = 6
+        elif level == 3:
+            snr = 0
+        elif level == 4:
+            snr = -6
         else:
             raise ValueError('This noise level is not supported')
     elif noise_type == 'ma':
@@ -378,23 +378,4 @@ def resize_noise(noise, name, old_freq=360, new_freq=500):
     with open(name + '.pkl', 'wb') as output:
         pkl.dump(new_noise, output)
 
-
-if __name__ == "__main__":
-    import scipy.io as sio
-    import glob
-    import wfdb
-    lst = [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 111, 112, 113, 114, 115, 116,
-           117, 118, 119, 121, 122, 123, 124, 200, 201, 202, 203, 205, 207, 208, 209, 210,
-           212, 213, 214, 215, 217, 219, 220, 221, 222, 223, 228, 230, 231, 232, 233, 234]
-    res = []
-    for elem in lst:
-        rec = np.zeros((902500, 2))
-        record = wfdb.rdsamp('mit\\' + str(elem))
-        record = record[0]
-        rec[:,0] = _resize_signal(record[:,0])
-        rec[:,1] = _resize_signal(record[:,1])
-        res.append(np.array(rec))
-    res = np.array(res)
-    with open("mit\\mit_dataset.pkl", 'wb') as output:
-        pkl.dump(res, output)
 

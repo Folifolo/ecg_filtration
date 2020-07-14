@@ -9,7 +9,7 @@ def conv1d_block(
         use_batch_norm=True,
         dropout=0.3,
         filters=16,
-        kernel_size=10,
+        kernel_size=20,
         activation='relu',
         kernel_initializer='he_normal',
         padding='same'):
@@ -75,5 +75,5 @@ if __name__ == "__main__":
     # model = load_model(MODEL_PATH)
     model.summary()
 
-    X = load_split()
+    X, _ = load_split()
     train_eval(model, X, only_eval=True, save_path=MODEL_PATH, size=2048, epochs=150)

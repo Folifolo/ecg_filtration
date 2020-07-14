@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, confusion_matrix, accuracy_score
 from sklearn.model_selection import train_test_split
 
 from dataset import load_dataset
@@ -34,12 +34,19 @@ def get_predict_labels_dual_out(model, data):
 
 
 def plot_results(y_prediction, y_labels, x):
+    nn = ["0", "1", "2", "3", "4"]
     for i in range(len(y_prediction)):
-        plt.subplot(7, 1, 1)
+        plt.subplot(6, 1, 1)
         plt.plot(x[0][i, :, 0])
-        for j in np.arange(2, 8):
+        plt.ylabel('ЭКГ')
+        plt.xticks([])
+        plt.yticks([])
+        for j in np.arange(2, 7):
             x_axis = np.arange(y_prediction.shape[1])
-            plt.subplot(7, 1, j)
+            plt.subplot(6, 1, j)
+            plt.ylabel(nn[j - 2])
+            plt.xticks([])
+            plt.yticks([])
             curr_pred = (y_prediction[i] == j - 2).astype(int)
             curr_label = (y_labels[i] == j - 2).astype(int)
             plt.fill_between(x_axis, [0.5] * y_prediction.shape[1], curr_label * 0.5 + 0.5, alpha=0.3, color='b')
@@ -62,8 +69,13 @@ def calculate_f1(y_prediction, y_labels):
             print("F1 score for class " + str(i) + " == " + str(curr_f1.round(4)))
             mean_f1 += curr_f1
 
-    print("Mean F1 score: " + str((mean_f1 / classes).round(4)))
+            tn, fp, fn, tp = confusion_matrix(curr_label, curr_pred).ravel()
 
+            test_se = tp / (tp + fn)
+            test_sp = tn / (tn + fp)
+            print("Val. Se = %s, Val. Sp = %s" % (round(test_sp, 4), round(test_se, 4)))
+            print("accuracy ", accuracy_score(curr_label, curr_pred))
+    print("Mean F1 score: " + str((mean_f1 / classes).round(4)))
 
 
 def save_hist(h, name):
@@ -78,10 +90,12 @@ def plot_confusion(y_prediction, y_labels):
     import pandas as pd
     import seaborn as sn
     from sklearn.metrics import confusion_matrix
+    class_names = ["0", "1", "2", "3", "4"]
     y_prediction = y_prediction.flatten()
     y_labels = y_labels.flatten()
     matr = confusion_matrix(y_labels, y_prediction) / 4096 / 2000
-    df_cm = pd.DataFrame(matr)
+    df_cm = pd.DataFrame(matr, index=[i for i in class_names],
+                         columns=[i for i in class_names])
     plt.figure(figsize=(10, 7))
     sn.heatmap(df_cm, annot=True, cmap="Blues")
     plt.show()
@@ -101,6 +115,7 @@ def new_metric(y_prediction, y_labels):
     print("modified accuracy " + str(accuracy))
     return accuracy
 
+
 def new_metric_binary(y_prediction, y_labels):
     accuracy = 0.0
     for i in range(y_prediction.shape[0]):
@@ -115,7 +130,7 @@ def new_metric_binary(y_prediction, y_labels):
 
 
 def train_model(model, x, save_path="simple_detection", generator=artefact_for_detection,
-                size=2048, epochs=150, noise_prob=None, noise_type='ma', interv = 10):
+                size=2048, epochs=150, noise_prob=None, noise_type='ma', interv=10):
     from keras.callbacks import ModelCheckpoint
 
     if noise_prob is None:
@@ -124,10 +139,10 @@ def train_model(model, x, save_path="simple_detection", generator=artefact_for_d
     X_train = x[0]
     X_test = x[1]
 
-    generator_test = generator(X_test, size, 500, noise_type=noise_type, noise_prob=noise_prob)
+    generator_test = generator(X_test, size, 500, noise_type=noise_type, noise_prob=noise_prob, num_sections=interv)
     val = next(generator_test)
 
-    generator_train = generator(X_train, size, 10, noise_type='ma', noise_prob=noise_prob)
+    generator_train = generator(X_train, size, 10, noise_type='ma', noise_prob=noise_prob, num_sections=interv)
 
     model_path = "models\\" + save_path + "_" + noise_type + ".h5"
     checkpoint = ModelCheckpoint(model_path, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
@@ -150,14 +165,35 @@ def eval_model(model, x, generator=artefact_for_detection, size=2048, noise_prob
     generator_test = generator(X_test, size, 2000, noise_type=noise_type, noise_prob=noise_prob)
     val = next(generator_test)
 
+    import time
+    start = time.time()
     y_prediction, y_labels = get_predict_labels(model, val)
+    done = time.time()
+    elapsed = done - start
+    print(elapsed)
 
-    calculate_f1(y_prediction, y_labels)
-    new_metric(y_prediction, y_labels)
-    binary_class(y_prediction, y_labels)
+    # calculate_f1(y_prediction, y_labels)
+    # new_metric(y_prediction, y_labels)
+    # binary_class(y_prediction, y_labels)
 
     # plot_confusion(y_prediction, y_labels)
+    plot_roc(model, val)
+    plot_confusion(y_prediction, y_labels)
     plot_results(y_prediction, y_labels, val[0])
+
+
+def plot_roc(model, val):
+    from sklearn.metrics import roc_auc_score
+    from sklearn.metrics import roc_curve
+    y_val_cat_prob = model.predict(val[0])
+
+    pred = val[1][0][:, -2].flatten()
+    lab = y_val_cat_prob[0][:, -2].flatten()
+    fpr, tpr, thresholds = roc_curve(pred, lab)
+
+    print("AUC = ", roc_auc_score(val[1][0].flatten(), y_val_cat_prob[0].flatten()))
+    plt.plot(fpr, tpr)
+    plt.show()
 
 
 def eval_model_binary(model, x, generator=artefact_for_detection, size=2048, noise_prob=None, noise_type='ma'):
@@ -166,9 +202,9 @@ def eval_model_binary(model, x, generator=artefact_for_detection, size=2048, noi
 
     X_test = x[1]
 
-    generator_test = generator(X_test, size, 2000, noise_type=noise_type, noise_prob=noise_prob)
+    generator_test = generator(X_test, size, 2000, noise_type=noise_type, noise_prob=noise_prob, num_sections=0)
     val = next(generator_test)
-
+    """
     y_prediction, y_labels = get_predict_labels(model, val)
     new_pred = []
     new_labels = []
@@ -183,16 +219,18 @@ def eval_model_binary(model, x, generator=artefact_for_detection, size=2048, noi
         
     calculate_f1(new_pred, new_labels)
     new_metric_binary(new_pred, new_labels)
+    """
+    plot_roc(model, val)
 
     # plot_confusion(y_prediction, y_labels)
-    plot_results(y_prediction, y_labels, val[0])
+    # plot_results(y_prediction, y_labels, val[0])
 
 
 def train_eval(model, x, only_eval=False, save_path="simple_detection_em", generator=artefact_for_detection,
                size=2048, epochs=150, noise_prob=None, noise_type='ma'):
     if not only_eval:
-        model = train_model(model, x, save_path, generator, size, epochs, noise_prob, noise_type)
-    eval_model_binary(model, x, generator, size, noise_prob, noise_type)
+        model = train_model(model, x, save_path, generator, size, epochs, noise_prob, noise_type, interv=10)
+    eval_model(model, x, generator, size, noise_prob, noise_type)
     return model
 
 
@@ -227,7 +265,7 @@ def test_arc(model, x, generator=artefact_for_detection, size=2048, noise_prob=N
 def to_binary(y_labels):
     class54 = y_labels == 5
     class54 += y_labels == 4
-    class54 += y_labels == 3
+    # class54 += y_labels == 3
     res = np.zeros(y_labels.shape[0])
     for i in range(y_labels.shape[0]):
         if np.sum(class54[i]) > y_labels.shape[1] // 2:
@@ -244,7 +282,9 @@ def binary_class(y_prediction, y_labels):
 
 
 def load_split():
-    X = load_dataset()['x']
-    X_train, X_test = train_test_split(X, test_size=0.25, random_state=42)
-    #X_val, X_test = train_test_split(X_test, test_size=0.25, random_state=42)
-    return X_train, X_test
+    xy = load_dataset()
+    X = xy['x']
+    Y = xy['y']
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.25, random_state=42)
+    # X_val, X_test = train_test_split(X_test, test_size=0.25, random_state=42)
+    return (X_train, X_test), (Y_train, Y_test)
